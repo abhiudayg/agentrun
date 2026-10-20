@@ -54,8 +54,33 @@ internal/mode     Lite and Full modes, resolution from flag and organization con
 internal/policy   sha256 digest of canonical policy bytes
 internal/record   run provenance: mode, host, and policy digest, validated on construction and on decode
 test/capability   Phase 0 spike: checks Apple container behavior the design depends on (build tag: capability)
+prototype/        wizard-of-oz shell prototype for the Phase 0 study, with its Go test driver
 docs/             Phase 0 reports and runbooks
 ```
+
+## Prototype (Phase 0 study)
+
+`prototype/agentrun-proto` is the shell prototype the Phase 0 study uses. It is not the product. It runs the agent directly on the host, with no isolation (see the limits below).
+
+```sh
+prototype/agentrun-proto submit "Fix the flaky auth tests" --repo ~/code/app
+prototype/agentrun-proto list
+prototype/agentrun-proto logs <id>
+prototype/agentrun-proto result <id>
+prototype/agentrun-proto cancel <id>
+```
+
+- `submit` refuses a repository with uncommitted changes unless `--include-dirty` is given. The run starts from HEAD either way; uncommitted edits are not copied in.
+- Each run gets a worktree and branch `agentrun/<id>` under `$AGENTRUN_PROTO_DATA/runs/<id>/`. The agent's changes are committed on that branch, and `patch.diff` is written when there are changes.
+- `AGENTRUN_AGENT_CMD` sets the agent command. It defaults to `claude -p`, and the task text is passed on stdin, never interpolated into a shell.
+- Each command appends its name, a run ID, and a timestamp to `$AGENTRUN_PROTO_DATA/usage.log`. Prompt text is never logged.
+
+Requirements: bash, and git. Tested with bash 3.2.57 (macOS system bash) and git 2.54.0. The PRD targets git 2.30 or later; that version has not been tested.
+
+Limits:
+- **No isolation.** The agent runs with your user's permissions and can read and write anything you can. A worktree's `.git` file points into the main repository, so an agent can reach its hooks directory. Run the study only with agents and repositories participants have agreed to use. The container backend (Phase 1) is what provides isolation.
+- Repository hooks are disabled for the worktree creation and the run's commit.
+- `cancel` marks the run cancelled, then signals the agent's process group. There is a short race: if a cancel arrives while a queued run is starting, the run can be marked running again and the agent starts. Cancel once the run shows `running` with an agent PID, and check the status again.
 
 ## Phase 0 documents
 

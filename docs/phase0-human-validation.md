@@ -4,7 +4,7 @@ An agent can do the teardown and the capability checks (see `docs/phase0-teardow
 
 ## Before any human test can start
 
-1. **Build the wizard-of-oz prototype.** The PRD requires a shell script with the command shape in §6.2 (`submit`, `list`, `logs`, `cancel`, `result`). It is not built yet. A facilitator runs it by hand for participants. Until it exists, the prototype and usability tests cannot run.
+1. **Prototype.** `prototype/agentrun-proto` implements the §6.2 command shape (`submit`, `list`, `logs`, `cancel`, `result`) and is covered by `go test ./prototype/`. A facilitator runs it on each participant's machine, or on a facilitator-controlled machine, as described in the README. It runs the agent without isolation, so each participant must agree to the agent and repository used.
 2. **Decide the data rules.** The PRD forbids telemetry by default. Participant logs must record command names, timestamps, and outcomes only, never prompts, paths, or code. Store logs locally under the facilitator's control, with participants identified by a code (P01, P02, ...), not by name.
 3. **Write the consent text.** It must say what is recorded, that participation can stop at any time, and how the data is deleted on request.
 

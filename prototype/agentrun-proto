@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+set -eu
+
+DATA="${AGENTRUN_PROTO_DATA:-$HOME/.local/share/agentrun-proto}"
+RUNS="$DATA/runs"
+AGENT_CMD="${AGENTRUN_AGENT_CMD:-claude -p}"
+GRACE_SECONDS=2
+DOCS="README.md#prototype"
+
+fail() {
+  printf 'error: %s\n  cause: %s\n  fix:   %s\n  docs:  %s\n' "$1" "$2" "$3" "$DOCS" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+usage:
+  agentrun-proto submit "<prompt>" [--repo PATH] [--include-dirty]
+  agentrun-proto list
+  agentrun-proto logs <id>
+  agentrun-proto result <id>
+  agentrun-proto cancel <id>
+
+--include-dirty starts the run from HEAD even when the repository has
+uncommitted changes. Uncommitted edits are not copied into the run.
+EOF
+}
+
+record_usage() {
+  mkdir -p "$DATA"
+  printf '%s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" >> "$DATA/usage.log"
+}
+
+valid_id() {
+  case "$1" in
+    [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+require_run() {
+  valid_id "$1" || fail "invalid run id" \
+    "run IDs are 6 lowercase hex characters, got '$1'" \
+    "copy an ID from \`agentrun-proto list\`"
+  RUN_DIR="$RUNS/$1"
+  [ -d "$RUN_DIR" ] || fail "run not found" \
+    "no run with ID $1 exists under $RUNS" \
+    "check the ID with \`agentrun-proto list\`"
+}
+
+is_terminal() {
+  case "$1" in
+    succeeded|failed|cancelled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+new_id() {
+  local id
+  while :; do
+    id=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
+    if [ ! -e "$RUNS/$id" ]; then
+      printf '%s' "$id"
+      return 0
+    fi
+  done
+}
+
+set_status() {
+  printf '%s\n' "$1" > "$RUN_DIR/status"
+}
+
+cmd_submit() {
+  [ $# -ge 1 ] && [ -n "$1" ] || fail "missing prompt" \
+    "submit needs the task text as its first argument" \
+    "agentrun-proto submit \"Fix the flaky test\""
+  local prompt="$1"
+  shift
+  local repo="$PWD" include_dirty=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --repo)
+        [ $# -ge 2 ] || fail "missing value for --repo" "--repo needs a path" "pass --repo PATH"
+        repo="$2"
+        shift 2
+        ;;
+      --include-dirty)
+        include_dirty=1
+        shift
+        ;;
+      *)
+        fail "unknown option $1" "submit accepts --repo and --include-dirty" "see \`agentrun-proto --help\`"
+        ;;
+    esac
+  done
+
+  git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail \
+    "not a git repository" "$repo is not inside a git work tree" \
+    "run submit inside a repository or pass --repo PATH"
+  git -C "$repo" rev-parse --verify -q HEAD >/dev/null || fail \
+    "repository has no commits" "runs start from HEAD, which does not exist yet" \
+    "make an initial commit, then submit again"
+  if [ "$include_dirty" -eq 0 ] && [ -n "$(git -C "$repo" status --porcelain)" ]; then
+    fail "working tree contains uncommitted changes" \
+      "runs start from HEAD, so uncommitted edits would be missing from the run" \
+      "commit or stash your changes, or pass --include-dirty"
+  fi
+
+  repo=$(cd "$repo" && pwd)
+  local id base
+  id=$(new_id)
+  RUN_DIR="$RUNS/$id"
+  mkdir -p "$RUN_DIR/logs"
+  base=$(git -C "$repo" rev-parse HEAD)
+  git -C "$repo" -c core.hooksPath=/dev/null worktree add -q -b "agentrun/$id" "$RUN_DIR/worktree" "$base" || fail \
+    "could not create worktree" "git refused to create branch agentrun/$id" \
+    "run \`git -C $repo worktree list\` and remove stale entries"
+
+  printf '%s\n' "$prompt" > "$RUN_DIR/task.md"
+  printf '%s\n' "$base" > "$RUN_DIR/base"
+  set_status queued
+
+  nohup "$0" _execute "$id" >/dev/null 2>&1 &
+  record_usage submit "$id"
+  printf 'Run %s created · branch agentrun/%s\nNext: agentrun-proto result %s\n' "$id" "$id" "$id"
+}
+
+cmd_execute() {
+  require_run "$1"
+  [ "$(cat "$RUN_DIR/status")" = queued ] || return 0
+  set_status running
+
+  cd "$RUN_DIR/worktree"
+  set -m
+  sh -c "$AGENT_CMD" < "$RUN_DIR/task.md" > "$RUN_DIR/logs/agent.log" 2>&1 &
+  local pid=$!
+  set +m
+  printf '%s\n' "$pid" > "$RUN_DIR/agent.pid"
+
+  local code=0
+  wait "$pid" || code=$?
+  printf '%s\n' "$code" > "$RUN_DIR/exit_code"
+  collect "$1" "$code"
+}
+
+collect() {
+  local id="$1" code="$2" base
+  base=$(cat "$RUN_DIR/base")
+  cd "$RUN_DIR/worktree"
+  git add -A
+  if ! git diff --cached --quiet; then
+    printf 'agentrun: run %s\n' "$id" | git -c core.hooksPath=/dev/null commit -q -F - || code=1
+  fi
+  if [ -n "$(git diff "$base" HEAD --name-only)" ]; then
+    git diff "$base" HEAD > "$RUN_DIR/patch.diff"
+  fi
+  if [ "$(cat "$RUN_DIR/status")" != cancelled ]; then
+    if [ "$code" -eq 0 ]; then
+      set_status succeeded
+    else
+      set_status failed
+    fi
+  fi
+}
+
+cmd_cancel() {
+  require_run "$1"
+  local status
+  status=$(cat "$RUN_DIR/status")
+  if is_terminal "$status"; then
+    printf 'Run %s is already %s\n' "$1" "$status"
+    record_usage cancel noop
+    return 0
+  fi
+  set_status cancelled
+  if [ -f "$RUN_DIR/agent.pid" ]; then
+    local pid
+    pid=$(cat "$RUN_DIR/agent.pid")
+    kill -TERM -- "-$pid" 2>/dev/null || true
+    sleep "$GRACE_SECONDS"
+    kill -KILL -- "-$pid" 2>/dev/null || true
+  fi
+  printf 'Run %s cancelled; worktree kept at %s\n' "$1" "$RUN_DIR/worktree"
+  record_usage cancel "$1"
+}
+
+cmd_result() {
+  require_run "$1"
+  local status base head changed
+  status=$(cat "$RUN_DIR/status")
+  printf 'Outcome:  %s\n' "$status"
+  if ! is_terminal "$status"; then
+    printf 'Next:     run is %s; check again with agentrun-proto list\n' "$status"
+    return 0
+  fi
+  base=$(cat "$RUN_DIR/base")
+  head=$(git -C "$RUN_DIR/worktree" rev-parse --short HEAD)
+  printf 'Branch:   agentrun/%s (commit %s)\n' "$1" "$head"
+  changed=$(git -C "$RUN_DIR/worktree" diff --name-only "$base" HEAD)
+  if [ -z "$changed" ]; then
+    printf 'Changed:  none\n'
+  else
+    printf 'Changed:  %s file(s)\n' "$(printf '%s\n' "$changed" | wc -l | tr -d ' ')"
+    printf '%s\n' "$changed" | sed 's/^/          /'
+  fi
+  if [ -f "$RUN_DIR/patch.diff" ]; then
+    printf 'Patch:    %s\n' "$RUN_DIR/patch.diff"
+  fi
+  record_usage result "$1"
+}
+
+cmd_logs() {
+  require_run "$1"
+  cat "$RUN_DIR/logs/agent.log" 2>/dev/null || true
+}
+
+cmd_list() {
+  if [ ! -d "$RUNS" ]; then
+    echo "No runs yet."
+    return 0
+  fi
+  printf '%-8s %-10s %s\n' ID STATUS TASK
+  local dir
+  for dir in "$RUNS"/*; do
+    [ -f "$dir/status" ] || continue
+    printf '%-8s %-10s %s\n' "$(basename "$dir")" "$(cat "$dir/status")" "$(head -1 "$dir/task.md" | cut -c1-40)"
+  done
+}
+
+main() {
+  local cmd="${1:-}"
+  if [ $# -gt 0 ]; then
+    shift
+  fi
+  case "$cmd" in
+    submit) cmd_submit "$@" ;;
+    list) cmd_list ;;
+    logs) cmd_logs "$@" ;;
+    result) cmd_result "$@" ;;
+    cancel) cmd_cancel "$@" ;;
+    _execute) cmd_execute "$@" ;;
+    -h|--help|"") usage ;;
+    *) fail "unknown command $cmd" "the commands are submit, list, logs, result, cancel" "run \`agentrun-proto --help\`" ;;
+  esac
+}
+
+main "$@"
