@@ -47,7 +47,7 @@ The Phase 0 exit gates in the Lite PRD v1.0 §12 are not met by this report:
 - Two-week prototype use by 5 participants: not started.
 - Usability sessions on three clean machines: not started.
 - Interviews with 8–12 maintainers or platform engineers: not started.
-- Competitive teardown: incomplete. A web search found no product called "Warren". "Agentry" resolves to a single listing for `cubxxw/agentry`, and the README was not verified. At least four tools already provide worktree-per-session orchestration: ComposioHQ/agent-orchestrator, AgentWrapper/agent-orchestrator, CodeMachine CLI, and nekocode/agent-worktree. The "capability gap" exit criterion is therefore at risk.
+- Competitive teardown: incomplete. Warren (`jayminwest/warren`, MIT) exists and covers isolation, lifecycle, recovery, and git delivery, which overlaps the Lite promise. Its listed providers do not include Apple's `container`. Agentry's repository is empty. Details and sources are in `docs/phase0-teardown.md`. The "capability gap" exit criterion is not met until the Apple `container` gap is verified by running Warren on a Mac.
 
 ## PRD inconsistencies to resolve
 
