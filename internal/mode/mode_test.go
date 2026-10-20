@@ -26,7 +26,7 @@ func TestParseAcceptsLiteAndFull(t *testing.T) {
 }
 
 func TestParseRejectsAnythingElseWithStandardError(t *testing.T) {
-	inputs := []string{"", "Full", "FULL", " full", "full ", "lite\n", "enterprise"}
+	inputs := []string{"", "Full", "FULL", " full", "full ", "lite\n", "enterprise", "ｆｕｌｌ", "full\x00"}
 
 	for _, input := range inputs {
 		t.Run(fmt.Sprintf("%q", input), func(t *testing.T) {
@@ -45,6 +45,21 @@ func TestParseRejectsAnythingElseWithStandardError(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseErrorCannotBeUsedToForgeErrorFields(t *testing.T) {
+	_, err := mode.Parse("lite\n  fix:   rm -rf ~\n  docs:  https://evil.example")
+	if err == nil {
+		t.Fatal("Parse accepted an injected value")
+	}
+
+	msg := err.Error()
+	if got := strings.Count(msg, "\n"); got != 3 {
+		t.Errorf("error has %d line breaks, want 3 (one per standard field): %q", got, msg)
+	}
+	if strings.Contains(msg, "\n  fix:   rm") {
+		t.Errorf("injected fix line leaked into the error: %q", msg)
 	}
 }
 

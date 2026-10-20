@@ -53,6 +53,10 @@ func TestNewProvenanceRejectsInvalidFields(t *testing.T) {
 		{name: "digest too short", mode: mode.Lite, host: "local", digest: "sha256:abcd"},
 		{name: "digest too long", mode: mode.Lite, host: "local", digest: "sha256:" + validHex + "00"},
 		{name: "digest with non-hex characters", mode: mode.Lite, host: "local", digest: "sha256:" + strings.Repeat("z", 64)},
+		{name: "uppercase hex digest names the same hash under a second spelling", mode: mode.Lite, host: "local", digest: "sha256:" + strings.ToUpper(strings.Repeat("ab", 32))},
+		{name: "whitespace-only host", mode: mode.Lite, host: "   ", digest: digest},
+		{name: "host with trailing space", mode: mode.Lite, host: "local ", digest: digest},
+		{name: "host with embedded newline", mode: mode.Lite, host: "team\nfix: rm", digest: digest},
 	}
 
 	for _, tc := range cases {
@@ -61,6 +65,48 @@ func TestNewProvenanceRejectsInvalidFields(t *testing.T) {
 				t.Errorf("NewProvenance(%q, %q, %q) accepted invalid input", tc.mode, tc.host, tc.digest)
 			}
 		})
+	}
+}
+
+func TestUnmarshalJSONRejectsRecordsThatNewProvenanceRejects(t *testing.T) {
+	digest := policy.Digest([]byte("network: none"))
+
+	cases := map[string]string{
+		"unknown mode":   `{"mode":"enterprise","host":"local","policy_digest":"` + digest + `"}`,
+		"empty mode":     `{"mode":"","host":"local","policy_digest":"` + digest + `"}`,
+		"empty host":     `{"mode":"lite","host":"","policy_digest":"` + digest + `"}`,
+		"missing digest": `{"mode":"lite","host":"local","policy_digest":""}`,
+		"truncated JSON": `{"mode":`,
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			var p record.Provenance
+			if err := json.Unmarshal([]byte(raw), &p); err == nil {
+				t.Errorf("Unmarshal accepted %s: %+v", name, p)
+			}
+		})
+	}
+}
+
+func TestJSONRoundTripPreservesValidProvenance(t *testing.T) {
+	digest := policy.Digest([]byte("network: none"))
+	want, err := record.NewProvenance(mode.Lite, "local", digest)
+	if err != nil {
+		t.Fatalf("NewProvenance returned error: %v", err)
+	}
+
+	raw, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	var got record.Provenance
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("Unmarshal rejected a record it wrote: %v", err)
+	}
+
+	if got != want {
+		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
 }
 
