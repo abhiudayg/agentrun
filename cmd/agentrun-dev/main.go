@@ -11,7 +11,9 @@ import (
 
 type command func(stdout io.Writer, jsonOut bool, args []string) error
 
-var commands = map[string]command{}
+var commands = map[string]command{
+	"verify": runVerify,
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, commands))
