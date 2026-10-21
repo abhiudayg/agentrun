@@ -12,8 +12,9 @@ import (
 type command func(stdout io.Writer, jsonOut bool, args []string) error
 
 var commands = map[string]command{
-	"verify": runVerify,
-	"doctor": doctor,
+	"verify":   runVerify,
+	"doctor":   doctor,
+	"evidence": evidence,
 }
 
 func main() {
