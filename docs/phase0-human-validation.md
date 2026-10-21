@@ -18,6 +18,13 @@ An agent can do the teardown and the capability checks (see `docs/phase0-teardow
 - what they do today to isolate tasks, check status, and collect results;
 - what would make them stop using a new tool.
 
+**Claim test (added to Gate 1).** The claim under test: developers who run unattended agents want a safe boundary and verified results enough to adopt a new tool over a worktree script. Ask each participant:
+- If you ran an agent you did not fully trust, what would it need to be allowed to touch? What would stop you from running it at all?
+- Show the two options: a worktree script (separate checkout, shared machine, shared credentials) and a run with an isolated container and a verification gate. Which would you use for an unattended run, and why?
+- When an agent says a task is done, what evidence do you check before accepting the result? How often do you find it wrong?
+
+Decision rule, fixed before the interviews: if at least 3 of the participants who run unattended agents say the boundary or verification changes whether they use a tool, the product is "safe, verified agent runs." If most say a worktree script is enough, contribute the credential-isolation and verification ideas to an existing project instead. Record quotes for each answer. Do not count an answer as support unless the participant names a specific run they did or avoided.
+
 Take notes in a shared file with one row per participant. Quote the participant's own words for each pain point. Do not paraphrase sentiment into a stronger claim.
 
 **Pass criteria (from the PRD exit gate):**

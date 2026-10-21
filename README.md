@@ -1,6 +1,6 @@
 # AgentRun
 
-AgentRun runs coding-agent tasks as isolated, recoverable jobs on your own machine. It is intended to be one binary, `agentrun`, with two modes:
+AgentRun is designed to run agents you don't fully trust, and to accept only results that proved themselves. Each task is meant to run in its own isolated container and git worktree, with its result accepted only after the project's checks pass on the agent's changes. The engine is not built yet (see Status). It is intended to be one binary, `agentrun`, with two modes:
 
 - **Lite** (default): one developer, one machine. Each task runs in its own isolated container and git worktree, and you can check status, read logs, cancel, and collect a reviewable branch or patch.
 - **Full**: a small team shares one agent host, with a shared queue, per-user identity, quotas, an audit trail, and organization policy. Full is not built yet.
