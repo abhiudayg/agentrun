@@ -13,6 +13,7 @@ type command func(stdout io.Writer, jsonOut bool, args []string) error
 
 var commands = map[string]command{
 	"verify": runVerify,
+	"doctor": doctor,
 }
 
 func main() {
