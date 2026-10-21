@@ -1,0 +1,146 @@
+package verify
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"unicode/utf8"
+)
+
+const outputLimit = 4096
+
+var (
+	ErrNoChecks        = errors.New("verify: no checks configured")
+	ErrInvalidAttempts = errors.New("verify: max attempts must be at least 1")
+)
+
+type Check struct {
+	Name    string
+	Command string
+}
+
+type Result struct {
+	Name     string
+	Passed   bool
+	ExitCode int
+	Output   string
+}
+
+type Agent func(ctx context.Context, prompt string) error
+
+type Config struct {
+	Dir         string
+	Task        string
+	Checks      []Check
+	MaxAttempts int
+	Agent       Agent
+}
+
+type Status string
+
+const (
+	Passed     Status = "passed"
+	Exhausted  Status = "exhausted"
+	NoProgress Status = "no_progress"
+)
+
+type Attempt struct {
+	Number   int
+	AgentErr error
+	Results  []Result
+}
+
+type Outcome struct {
+	Status   Status
+	Attempts []Attempt
+}
+
+func RunChecks(ctx context.Context, dir string, checks []Check) ([]Result, error) {
+	var results []Result
+	for _, c := range checks {
+		res, err := runCheck(ctx, dir, c)
+		if err != nil {
+			return results, err
+		}
+		results = append(results, res)
+		if !res.Passed {
+			break
+		}
+	}
+	return results, nil
+}
+
+func runCheck(ctx context.Context, dir string, c Check) (Result, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", c.Command)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+
+	res := Result{Name: c.Name, Passed: err == nil, Output: tail(string(out))}
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &exitErr):
+		res.ExitCode = exitErr.ExitCode()
+	default:
+		return Result{}, fmt.Errorf("run check %q: %w", c.Name, err)
+	}
+	return res, nil
+}
+
+func Loop(ctx context.Context, cfg Config) (Outcome, error) {
+	if len(cfg.Checks) == 0 {
+		return Outcome{}, ErrNoChecks
+	}
+	if cfg.MaxAttempts < 1 {
+		return Outcome{}, ErrInvalidAttempts
+	}
+
+	var out Outcome
+	var previous Result
+	prompt := cfg.Task
+	for n := 1; n <= cfg.MaxAttempts; n++ {
+		if err := ctx.Err(); err != nil {
+			return out, err
+		}
+
+		agentErr := cfg.Agent(ctx, prompt)
+		results, err := RunChecks(ctx, cfg.Dir, cfg.Checks)
+		if err != nil {
+			return out, err
+		}
+		out.Attempts = append(out.Attempts, Attempt{Number: n, AgentErr: agentErr, Results: results})
+
+		last := results[len(results)-1]
+		if last.Passed {
+			out.Status = Passed
+			return out, nil
+		}
+		if n > 1 && last == previous {
+			out.Status = NoProgress
+			return out, nil
+		}
+		previous = last
+		prompt = repairPrompt(cfg.Task, last)
+	}
+	out.Status = Exhausted
+	return out, nil
+}
+
+func repairPrompt(task string, failed Result) string {
+	return fmt.Sprintf(
+		"%s\n\nThe check %q failed with exit code %d. Its output ended with:\n%s\nFix the code so every check passes. Do not weaken, skip, or delete a check.",
+		task, failed.Name, failed.ExitCode, failed.Output,
+	)
+}
+
+func tail(s string) string {
+	if len(s) <= outputLimit {
+		return s
+	}
+	cut := len(s) - outputLimit
+	for !utf8.RuneStart(s[cut]) {
+		cut++
+	}
+	return s[cut:]
+}
