@@ -2,6 +2,7 @@ package verify_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,46 @@ import (
 
 	"agentrun/internal/verify"
 )
+
+func TestSaveOutcomeWritesOutcomeJSONReadableBack(t *testing.T) {
+	dir := t.TempDir()
+	outcome := verify.Outcome{
+		Status: verify.Exhausted,
+		Attempts: []verify.Attempt{
+			{Number: 1, Results: []verify.Result{{Name: "unit", ExitCode: 1, Output: "fail"}}},
+			{Number: 2, AgentErr: errors.New("agent exited 1"), Results: []verify.Result{{Name: "unit", ExitCode: 1, Output: "fail"}}},
+		},
+	}
+
+	if err := verify.SaveOutcome(dir, outcome); err != nil {
+		t.Fatalf("SaveOutcome() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "outcome.json"))
+	if err != nil {
+		t.Fatalf("read outcome.json: %v", err)
+	}
+	var saved struct {
+		Status   string `json:"status"`
+		Attempts []struct {
+			Number   int    `json:"number"`
+			AgentErr string `json:"agent_err"`
+		} `json:"attempts"`
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("outcome.json is not valid JSON: %v", err)
+	}
+
+	if saved.Status != string(verify.Exhausted) {
+		t.Errorf("saved status = %q, want %q", saved.Status, verify.Exhausted)
+	}
+	if len(saved.Attempts) != 2 {
+		t.Errorf("saved attempts = %d, want 2", len(saved.Attempts))
+	}
+	if saved.Attempts[1].AgentErr != "agent exited 1" {
+		t.Errorf("saved agent_err = %q, want %q", saved.Attempts[1].AgentErr, "agent exited 1")
+	}
+}
 
 func TestRunChecksStopsAtFirstFailure(t *testing.T) {
 	dir := t.TempDir()

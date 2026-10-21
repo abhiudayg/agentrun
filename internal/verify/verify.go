@@ -2,13 +2,18 @@ package verify
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"unicode/utf8"
 )
 
 const outputLimit = 4096
+
+const outcomeFileName = "outcome.json"
 
 var (
 	ErrNoChecks        = errors.New("verify: no checks configured")
@@ -125,6 +130,37 @@ func Loop(ctx context.Context, cfg Config) (Outcome, error) {
 	}
 	out.Status = Exhausted
 	return out, nil
+}
+
+type outcomeFile struct {
+	Status   Status        `json:"status"`
+	Attempts []attemptFile `json:"attempts"`
+}
+
+type attemptFile struct {
+	Number   int      `json:"number"`
+	AgentErr string   `json:"agent_err,omitempty"`
+	Results  []Result `json:"results"`
+}
+
+func SaveOutcome(dir string, outcome Outcome) error {
+	file := outcomeFile{Status: outcome.Status}
+	for _, a := range outcome.Attempts {
+		af := attemptFile{Number: a.Number, Results: a.Results}
+		if a.AgentErr != nil {
+			af.AgentErr = a.AgentErr.Error()
+		}
+		file.Attempts = append(file.Attempts, af)
+	}
+
+	data, err := json.MarshalIndent(file, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal outcome: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, outcomeFileName), data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", outcomeFileName, err)
+	}
+	return nil
 }
 
 func repairPrompt(task string, failed Result) string {
