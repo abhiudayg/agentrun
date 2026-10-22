@@ -12,6 +12,11 @@ Shared rules for every item: test first, no new comments, `gofmt -l .` prints no
 | 4 | `agentrun-dev verify` | 3 | `agentrun-dev verify <dir> name=cmd ...` runs checks and exits 0 on pass, 1 on fail; `--json` prints the results |
 | 5 | `agentrun-dev doctor` | 3 | Reports `git`, `go`, and `sh` on PATH; a missing tool produces the 4-line error from `internal/errors` |
 | 6 | `agentrun-dev evidence <dir>` | 1, 3 | Prints the status and attempts from `outcome.json`; a missing file gives the 4-line error |
+| 7 | Name, labels, and memory in `RunArgs` | none | `Spec` gains `Name`, `Labels`, and `Memory`; `RunArgs` emits `--name`, sorted `--label k=v`, and `--memory` when set; a label key or value with `=` or `,` is rejected; `internal/container/args.go`, `container.go`, `validate.go`, and their tests only |
+| 8 | Apple `container` backend | 7 | `internal/container/apple` implements `container.Backend` by running `container run` attached; exit code comes back in `Result`; output goes to an `io.Writer`; a fake `container` script in the test temp dir checks args, exit codes, and cancellation |
+| 9 | Egress allowlist proxy | none | `internal/egress` is a CONNECT-only HTTP proxy that tunnels to allowed host names and returns 403 for others, including IP literals; non-CONNECT methods get 405; tests use a local TCP echo server and `localhost` |
+
+Items 7–9 implement `docs/decisions/apple-container-backend.md`. Live container checks (`go test -tags capability ./test/capability/...` and a real prompt) are run by hand after these items merge.
 
 ## Checking a run
 
