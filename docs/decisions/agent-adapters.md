@@ -86,8 +86,12 @@ Sources for the install details: npm registry metadata (`npm view`) for claude, 
   - OpenCode and Codex have no fixture until their accounts work.
 - **Container install (A0.5):** done as a survey (see above). Cursor and agy have no confirmed Linux arm64 build yet.
 
-## Decisions to make
+## Decisions
 
-1. Confirm the Antigravity read-only approach. Default mode with `--dangerously-skip-permissions` inside the container is the candidate.
-2. Pick a Codex model that the account supports, or leave Codex out of the default set until one is chosen.
-3. Decide whether the adapters should pass `--bare` (Claude) and similar flags to avoid loading the user's global hooks and MCP servers into the logs.
+1. **Antigravity read-only approach: accepted.** agy runs in default mode with `--dangerously-skip-permissions`, inside the container only. Its `--mode plan` produced a plan artifact instead of an answer, so it is not used. The adapter always passes `--add-dir` with the workspace.
+2. **Keep hooks and MCP servers out of agent logs: accepted, with a Claude-specific flag set.**
+   - `--bare` is not usable. The probe with `claude --bare` returned `Not logged in · Please run /login`. Bare mode accepts only `ANTHROPIC_API_KEY`, and the current login is OAuth.
+   - Claude adapter: `claude -p --output-format stream-json --verbose --setting-sources project --strict-mcp-config --mcp-config '{"mcpServers":{}}'`. The probe with these flags returned `OK`, 7 log lines, and no `hook_started` events. Login still works.
+   - Codex: `--ignore-user-config` exists in the help text. Not tested, because the account's model is blocked.
+   - Cursor (`agent`), agy, and OpenCode: no flag in their help skips user hooks or MCP servers. Cursor has `--approve-mcps`, which approves servers and does not skip them. These adapters need either an isolated config directory or a container without the host's config. Open for A3.
+3. **Codex model:** still open. Codex stays out of the default set until an account-supported model is chosen.
