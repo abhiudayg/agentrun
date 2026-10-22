@@ -18,8 +18,8 @@ type proxy struct {
 
 func New(allowed []string) http.Handler {
 	hosts := make(map[string]struct{}, len(allowed))
-	for _, host := range allowed {
-		hosts[strings.ToLower(host)] = struct{}{}
+	for _, authority := range allowed {
+		hosts[strings.ToLower(authority)] = struct{}{}
 	}
 	return &proxy{hosts: hosts}
 }
@@ -35,7 +35,7 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if !p.allowed(host) {
+	if _, ok := p.hosts[strings.ToLower(net.JoinHostPort(host, port))]; !ok {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
@@ -61,14 +61,6 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tunnel(upstream, client, brw.Reader)
-}
-
-func (p *proxy) allowed(host string) bool {
-	if net.ParseIP(host) != nil {
-		return false
-	}
-	_, ok := p.hosts[strings.ToLower(host)]
-	return ok
 }
 
 func validPort(port string) bool {

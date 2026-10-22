@@ -83,7 +83,7 @@ func connect(t *testing.T, proxyAddr, target string) (net.Conn, *bufio.Reader, *
 
 func TestConnectToAllowedHostTunnelsBytesBothWays(t *testing.T) {
 	echoPort := startEcho(t)
-	proxyAddr := startProxy(t, "localhost")
+	proxyAddr := startProxy(t, "localhost:"+echoPort)
 
 	conn, br, resp := connect(t, proxyAddr, "localhost:"+echoPort)
 	if resp.StatusCode != http.StatusOK {
@@ -105,7 +105,8 @@ func TestConnectToAllowedHostTunnelsBytesBothWays(t *testing.T) {
 
 func TestConnectToHostNotOnAllowlistIsForbidden(t *testing.T) {
 	echoPort := startEcho(t)
-	proxyAddr := startProxy(t, "localhost")
+	otherPort := startEcho(t)
+	proxyAddr := startProxy(t, "localhost:"+echoPort)
 
 	tests := []struct {
 		name   string
@@ -115,6 +116,7 @@ func TestConnectToHostNotOnAllowlistIsForbidden(t *testing.T) {
 		{name: "subdomain of allowed host", target: "sub.localhost:" + echoPort},
 		{name: "IPv4 literal of a live listener", target: "127.0.0.1:" + echoPort},
 		{name: "IPv6 literal", target: "[::1]:" + echoPort},
+		{name: "allowed host on an unlisted port", target: "localhost:" + otherPort},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -127,7 +129,7 @@ func TestConnectToHostNotOnAllowlistIsForbidden(t *testing.T) {
 }
 
 func TestNonConnectMethodIsNotAllowed(t *testing.T) {
-	proxyAddr := startProxy(t, "localhost")
+	proxyAddr := startProxy(t, "localhost:443")
 
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
 		t.Run(method, func(t *testing.T) {
@@ -148,7 +150,7 @@ func TestNonConnectMethodIsNotAllowed(t *testing.T) {
 }
 
 func TestMalformedConnectTargetIsBadRequest(t *testing.T) {
-	proxyAddr := startProxy(t, "localhost")
+	proxyAddr := startProxy(t, "localhost:443")
 
 	targets := []string{
 		"localhost",
@@ -169,9 +171,10 @@ func TestMalformedConnectTargetIsBadRequest(t *testing.T) {
 }
 
 func TestAllowedHostWithClosedPortIsBadGateway(t *testing.T) {
-	proxyAddr := startProxy(t, "localhost")
+	port := closedPort(t)
+	proxyAddr := startProxy(t, "localhost:"+port)
 
-	_, _, resp := connect(t, proxyAddr, "localhost:"+closedPort(t))
+	_, _, resp := connect(t, proxyAddr, "localhost:"+port)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
 	}
@@ -179,7 +182,7 @@ func TestAllowedHostWithClosedPortIsBadGateway(t *testing.T) {
 
 func TestHostMatchingIgnoresCaseAndPort(t *testing.T) {
 	echoPort := startEcho(t)
-	proxyAddr := startProxy(t, "LocalHost")
+	proxyAddr := startProxy(t, "LocalHost:"+echoPort)
 
 	_, _, resp := connect(t, proxyAddr, "LOCALHOST:"+echoPort)
 	if resp.StatusCode != http.StatusOK {
