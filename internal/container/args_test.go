@@ -76,6 +76,145 @@ func TestRunArgs(t *testing.T) {
 			},
 			wantErr: container.ErrGitDirMounted,
 		},
+		{
+			name: "name is emitted after network",
+			mutate: func(s *container.Spec) {
+				s.Name = "agent-run-1"
+			},
+			want: []string{
+				"--user", "1000:1000",
+				"--read-only",
+				"--tmpfs", "/tmp",
+				"--network", "agentrun-internal",
+				"--name", "agent-run-1",
+				"ghcr.io/example/agent:1.2.3",
+				"sh", "-c", "echo hi",
+			},
+		},
+		{
+			name: "labels are sorted by key and emitted as key=value",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"run": "2d0ce0", "agent": "cursor"}
+			},
+			want: []string{
+				"--user", "1000:1000",
+				"--read-only",
+				"--tmpfs", "/tmp",
+				"--network", "agentrun-internal",
+				"--label", "agent=cursor",
+				"--label", "run=2d0ce0",
+				"ghcr.io/example/agent:1.2.3",
+				"sh", "-c", "echo hi",
+			},
+		},
+		{
+			name: "memory is emitted",
+			mutate: func(s *container.Spec) {
+				s.Memory = "2g"
+			},
+			want: []string{
+				"--user", "1000:1000",
+				"--read-only",
+				"--tmpfs", "/tmp",
+				"--network", "agentrun-internal",
+				"--memory", "2g",
+				"ghcr.io/example/agent:1.2.3",
+				"sh", "-c", "echo hi",
+			},
+		},
+		{
+			name: "name labels and memory precede mounts",
+			mutate: func(s *container.Spec) {
+				s.Name = "agent-run-1"
+				s.Labels = map[string]string{"run": "2d0ce0"}
+				s.Memory = "2g"
+				s.Mounts = []container.Mount{{Host: "/work/ws", Guest: "/work"}}
+			},
+			want: []string{
+				"--user", "1000:1000",
+				"--read-only",
+				"--tmpfs", "/tmp",
+				"--network", "agentrun-internal",
+				"--name", "agent-run-1",
+				"--label", "run=2d0ce0",
+				"--memory", "2g",
+				"--mount", "type=bind,source=/work/ws,target=/work",
+				"ghcr.io/example/agent:1.2.3",
+				"sh", "-c", "echo hi",
+			},
+		},
+		{
+			name: "empty name labels and memory emit nothing",
+			mutate: func(s *container.Spec) {
+				s.Name = ""
+				s.Labels = map[string]string{}
+				s.Memory = ""
+			},
+			want: []string{
+				"--user", "1000:1000",
+				"--read-only",
+				"--tmpfs", "/tmp",
+				"--network", "agentrun-internal",
+				"ghcr.io/example/agent:1.2.3",
+				"sh", "-c", "echo hi",
+			},
+		},
+		{
+			name: "label with empty key is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"": "v"}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "label with empty value is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"k": ""}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "label key with equals sign is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"a=b": "v"}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "label key with comma is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"a,b": "v"}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "label value with equals sign is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"k": "a=b"}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "label value with comma is rejected",
+			mutate: func(s *container.Spec) {
+				s.Labels = map[string]string{"k": "a,b"}
+			},
+			wantErr: container.ErrBadLabel,
+		},
+		{
+			name: "name with comma is rejected",
+			mutate: func(s *container.Spec) {
+				s.Name = "a,b"
+			},
+			wantErr: container.ErrBadName,
+		},
+		{
+			name: "name with equals sign is rejected",
+			mutate: func(s *container.Spec) {
+				s.Name = "a=b"
+			},
+			wantErr: container.ErrBadName,
+		},
 	}
 
 	for _, tt := range tests {

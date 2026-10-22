@@ -36,6 +36,16 @@ func (s Spec) Validate() error {
 			}
 		}
 	}
+	if strings.ContainsAny(s.Name, ",=") {
+		return fmt.Errorf("name %q contains a comma or equals sign: %w", s.Name, ErrBadName)
+	}
+	for k, v := range s.Labels {
+		for _, p := range []string{k, v} {
+			if p == "" || strings.ContainsAny(p, ",=") {
+				return fmt.Errorf("label %q=%q is invalid: %w", k, v, ErrBadLabel)
+			}
+		}
+	}
 	if len(s.Cmd) == 0 {
 		return fmt.Errorf("command is empty: %w", ErrEmptyCommand)
 	}
