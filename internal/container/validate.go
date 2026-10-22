@@ -27,6 +27,14 @@ func (s Spec) Validate() error {
 		if isGitDir(m.Host) || isGitDir(m.Guest) {
 			return fmt.Errorf("mount %q:%q exposes .git: %w", m.Host, m.Guest, ErrGitDirMounted)
 		}
+		if m.Host == "" || m.Guest == "" {
+			return fmt.Errorf("mount %q:%q has an empty path: %w", m.Host, m.Guest, ErrEmptyMountPath)
+		}
+		for _, p := range []string{m.Host, m.Guest} {
+			if strings.ContainsAny(p, ",=") {
+				return fmt.Errorf("mount path %q contains a comma or equals sign: %w", p, ErrBadMountPath)
+			}
+		}
 	}
 	if len(s.Cmd) == 0 {
 		return fmt.Errorf("command is empty: %w", ErrEmptyCommand)
@@ -75,5 +83,5 @@ func validateUser(user string) error {
 }
 
 func isGitDir(path string) bool {
-	return path == ".git" || strings.HasSuffix(path, "/.git")
+	return slices.Contains(strings.Split(path, "/"), ".git")
 }

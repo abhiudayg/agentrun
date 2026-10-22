@@ -81,9 +81,39 @@ func TestSpecValidate(t *testing.T) {
 		{name: "git dir as read-only mount", mutate: func(s *container.Spec) {
 			s.Mounts = []container.Mount{{Host: "/repo/.git", Guest: "/git", ReadOnly: true}}
 		}, wantErr: container.ErrGitDirMounted},
+		{name: "git hooks inside host git dir", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo/.git/hooks", Guest: "/hooks"}}
+		}, wantErr: container.ErrGitDirMounted},
+		{name: "git config inside guest git dir", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo/config", Guest: "/work/.git/config"}}
+		}, wantErr: container.ErrGitDirMounted},
+		{name: "relative git config path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: ".git/config", Guest: "/work/config"}}
+		}, wantErr: container.ErrGitDirMounted},
 		{name: "dotgithub directory is allowed", mutate: func(s *container.Spec) {
 			s.Mounts = []container.Mount{{Host: "/repo/.github", Guest: "/work/.github", ReadOnly: true}}
 		}},
+		{name: "gitignore file is allowed", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo/.gitignore", Guest: "/work/.gitignore", ReadOnly: true}}
+		}},
+		{name: "empty host mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "", Guest: "/work"}}
+		}, wantErr: container.ErrEmptyMountPath},
+		{name: "empty guest mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo", Guest: ""}}
+		}, wantErr: container.ErrEmptyMountPath},
+		{name: "comma in host mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/work/a,readonly", Guest: "/work"}}
+		}, wantErr: container.ErrBadMountPath},
+		{name: "comma in guest mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo", Guest: "/work/a,readonly"}}
+		}, wantErr: container.ErrBadMountPath},
+		{name: "equals sign in host mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/work/source=/evil", Guest: "/work"}}
+		}, wantErr: container.ErrBadMountPath},
+		{name: "equals sign in guest mount path", mutate: func(s *container.Spec) {
+			s.Mounts = []container.Mount{{Host: "/repo", Guest: "/work=x"}}
+		}, wantErr: container.ErrBadMountPath},
 		{name: "empty command", mutate: func(s *container.Spec) {
 			s.Cmd = nil
 		}, wantErr: container.ErrEmptyCommand},
