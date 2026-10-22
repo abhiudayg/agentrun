@@ -12,7 +12,6 @@ AgentRun runs coding-agent tasks as isolated, recoverable jobs on your own machi
 - shared foundations for the mode flag, policy digest, and provenance record (`internal/mode`, `internal/policy`, `internal/record`);
 - the standard error format and catalog (`internal/errors`);
 - an isolation capability suite that runs real containers against Apple's `container` CLI (`test/capability`);
-- Phase 0 validation documents in `docs/`.
 
 Nothing here runs a coding agent yet. The engine, run store, container backend, and CLI come after Phase 0 is complete.
 
@@ -55,7 +54,6 @@ internal/policy   sha256 digest of canonical policy bytes
 internal/record   run provenance: mode, host, and policy digest, validated on construction and on decode
 test/capability   Phase 0 spike: checks Apple container behavior the design depends on (build tag: capability)
 prototype/        wizard-of-oz shell prototype for the Phase 0 study, with its Go test driver
-docs/             Phase 0 reports and runbooks
 ```
 
 ## Prototype (Phase 0 study)
@@ -81,12 +79,6 @@ Limits:
 - **No isolation.** The agent runs with your user's permissions and can read and write anything you can. A worktree's `.git` file points into the main repository, so an agent can reach its hooks directory. Run the study only with agents and repositories participants have agreed to use. The container backend (Phase 1) is what provides isolation.
 - Repository hooks are disabled for the worktree creation and the run's commit.
 - `cancel` marks the run cancelled, then signals the agent's process group. There is a short race: if a cancel arrives while a queued run is starting, the run can be marked running again and the agent starts. Cancel once the run shows `running` with an agent PID, and check the status again.
-
-## Phase 0 documents
-
-- [`docs/phase0-capability-report.md`](docs/phase0-capability-report.md): what the container CLI does and does not support, with tested versions.
-- [`docs/phase0-teardown.md`](docs/phase0-teardown.md): nearby projects checked against their own READMEs, and what could not be verified.
-- [`docs/phase0-human-validation.md`](docs/phase0-human-validation.md): how to run the interviews, prototype study, and usability sessions that an agent cannot do.
 
 ## Known limits of the current spike
 
