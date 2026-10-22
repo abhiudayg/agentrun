@@ -13,7 +13,7 @@ AgentRun runs coding-agent tasks as isolated, recoverable jobs on your own machi
 - the standard error format and catalog (`internal/errors`);
 - an isolation capability suite that runs real containers against Apple's `container` CLI (`test/capability`);
 
-Nothing here runs a coding agent yet. The engine, run store, container backend, and CLI come after Phase 0 is complete.
+Nothing here runs a coding agent yet. The engine, run store, container backend, and CLI are not built yet.
 
 ## Requirements
 
@@ -52,13 +52,13 @@ internal/errors   standard error format (what, cause, fix, docs) and the error c
 internal/mode     Lite and Full modes, resolution from flag and organization config, Full-only gate
 internal/policy   sha256 digest of canonical policy bytes
 internal/record   run provenance: mode, host, and policy digest, validated on construction and on decode
-test/capability   Phase 0 spike: checks Apple container behavior the design depends on (build tag: capability)
-prototype/        wizard-of-oz shell prototype for the Phase 0 study, with its Go test driver
+test/capability   spike: checks Apple container behavior the design depends on (build tag: capability)
+prototype/        wizard-of-oz shell prototype for early study runs, with its Go test driver
 ```
 
-## Prototype (Phase 0 study)
+## Prototype
 
-`prototype/agentrun-proto` is the shell prototype the Phase 0 study uses. It is not the product. It runs the agent directly on the host, with no isolation (see the limits below).
+`prototype/agentrun-proto` is the shell prototype used for early study runs. It is not the product. It runs the agent directly on the host, with no isolation (see the limits below).
 
 ```sh
 prototype/agentrun-proto submit "Fix the flaky auth tests" --repo ~/code/app
