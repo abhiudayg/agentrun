@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 )
@@ -177,6 +179,57 @@ func TestAllowedHostWithClosedPortIsBadGateway(t *testing.T) {
 	_, _, resp := connect(t, proxyAddr, "localhost:"+port)
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+type decisionLog struct {
+	mu      sync.Mutex
+	entries []string
+}
+
+func (l *decisionLog) record(decision, target string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, decision+" "+target)
+}
+
+func (l *decisionLog) snapshot() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.entries)
+}
+
+func TestLogRecordsOneDecisionPerConnectBeforeResponse(t *testing.T) {
+	echoPort := startEcho(t)
+	var decisions decisionLog
+	srv := httptest.NewServer(New([]string{"localhost:" + echoPort}, WithLog(decisions.record)))
+	t.Cleanup(srv.Close)
+	proxyAddr := srv.Listener.Addr().String()
+
+	tests := []struct {
+		name       string
+		target     string
+		wantStatus int
+		wantLog    string
+	}{
+		{name: "allowed", target: "localhost:" + echoPort, wantStatus: http.StatusOK, wantLog: "allowed localhost:" + echoPort},
+		{name: "denied", target: "example.com:443", wantStatus: http.StatusForbidden, wantLog: "denied example.com:443"},
+		{name: "malformed", target: "localhost", wantStatus: http.StatusBadRequest, wantLog: "denied localhost"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(decisions.snapshot())
+
+			_, _, resp := connect(t, proxyAddr, tt.target)
+
+			if resp.StatusCode != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+			got := decisions.snapshot()[before:]
+			if !slices.Equal(got, []string{tt.wantLog}) {
+				t.Fatalf("log entries = %q, want %q", got, []string{tt.wantLog})
+			}
+		})
 	}
 }
 

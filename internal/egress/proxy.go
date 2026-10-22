@@ -14,14 +14,25 @@ const dialTimeout = 10 * time.Second
 
 type proxy struct {
 	hosts map[string]struct{}
+	log   func(decision, target string)
 }
 
-func New(allowed []string) http.Handler {
+type Option func(*proxy)
+
+func WithLog(fn func(decision, target string)) Option {
+	return func(p *proxy) { p.log = fn }
+}
+
+func New(allowed []string, opts ...Option) http.Handler {
 	hosts := make(map[string]struct{}, len(allowed))
 	for _, authority := range allowed {
 		hosts[strings.ToLower(authority)] = struct{}{}
 	}
-	return &proxy{hosts: hosts}
+	p := &proxy{hosts: hosts, log: func(string, string) {}}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -32,15 +43,19 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	host, port, err := net.SplitHostPort(r.Host)
 	if err != nil || host == "" || !validPort(port) {
+		p.log("denied", r.Host)
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	if _, ok := p.hosts[strings.ToLower(net.JoinHostPort(host, port))]; !ok {
+	target := net.JoinHostPort(host, port)
+	if _, ok := p.hosts[strings.ToLower(target)]; !ok {
+		p.log("denied", target)
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
+	p.log("allowed", target)
 
-	upstream, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), dialTimeout)
+	upstream, err := net.DialTimeout("tcp", target, dialTimeout)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusBadGateway), http.StatusBadGateway)
 		return
