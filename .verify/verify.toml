@@ -1,0 +1,10 @@
+[verify]
+commands = [
+  ".verify/run.sh all",
+  "go test -tags capability -count=1 -v -timeout 10m ./test/capability/",
+]
+
+[verify.default]
+command = [".verify/run.sh", "all"]
+timeout_secs = 900
+hook = false
